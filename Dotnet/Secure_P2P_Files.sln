@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Secure_P2P_Files", "Secure_P2P_Files.csproj", "{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

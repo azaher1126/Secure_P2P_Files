@@ -46,6 +46,9 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+# Rider
+.idea/
+
 ## Python section
 
 # Byte-compiled / optimized / DLL files
