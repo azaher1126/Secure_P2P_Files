@@ -1,9 +1,19 @@
-﻿namespace Secure_P2P_Files;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-class Program
+namespace SecureFiles;
+
+internal static class Program
 {
     static void Main(string[] args)
     {
-        Console.WriteLine("Hello, World!");
+        HostApplicationBuilder builder = new();
+
+        builder.Services.AddHostedService<ConsoleService>();
+        builder.Services.AddHostedService<ServerService>();
+        
+        var app = builder.Build();
+        
+        app.Run();
     }
 }

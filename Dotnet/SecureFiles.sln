@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Secure_P2P_Files", "Secure_P2P_Files.csproj", "{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecureFiles", "SecureFiles.csproj", "{9EF31B23-AB95-4AE5-A1E6-864BCC28B529}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
