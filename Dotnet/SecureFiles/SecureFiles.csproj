@@ -11,6 +11,7 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+      <PackageReference Include="Theodicean.Makaretu.Dns.Multicast" Version="0.0.6" />
     </ItemGroup>
 
     <ItemGroup>

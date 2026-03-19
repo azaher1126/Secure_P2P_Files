@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace SecureFiles;
+namespace SecureFiles.BackgroundServices;
 
 public class ConsoleService: BackgroundService
 {
@@ -17,6 +17,5 @@ public class ConsoleService: BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(3000, stoppingToken);
-        _appLifetime.StopApplication();
     }
 }
