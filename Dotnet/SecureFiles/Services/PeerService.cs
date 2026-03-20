@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.NetworkInformation;
 using Makaretu.Dns;
 using Microsoft.Extensions.Logging;
 using SecureFiles.Models;
@@ -9,59 +10,68 @@ public class PeerService : IAsyncDisposable
 {
     private const string ServiceName = "_secure_p2p_files._tcp";
 
-    private readonly AdvertisePeer _advertisePeer;
-    private ServiceProfile _serviceProfile;
+    private static readonly IEnumerable<NetworkInterfaceType> ExcludedInterfaces =
+        [NetworkInterfaceType.Loopback, NetworkInterfaceType.Tunnel];
+
+    private ServiceProfile? _serviceProfile;
 
     private ServiceDiscovery? _serviceDiscovery;
+    private MulticastService? _multicastService;
 
     private readonly ILogger<PeerService> _logger;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly UserConfigService _userConfigService;
 
     private readonly ConcurrentDictionary<string, Peer> _peers = new();
 
-    public PeerService(AdvertisePeer advertisePeer, ILogger<PeerService> logger)
+    public PeerService(UserConfigService userConfigService, ILoggerFactory loggerFactory)
     {
-        _logger = logger;
-
-        _advertisePeer = advertisePeer;
-        _serviceProfile = GetServiceProfile(advertisePeer);
+        _loggerFactory = loggerFactory;
+        _logger = _loggerFactory.CreateLogger<PeerService>();
+        _userConfigService = userConfigService;
     }
 
-    public async Task StartAsync()
+    public async Task StartAsync(ushort port, CancellationToken cancellationToken = default)
     {
         if (_serviceDiscovery != null)
         {
             return;
         }
 
-        _serviceDiscovery = await ServiceDiscovery.CreateInstance();
+        _multicastService =
+            new MulticastService(
+                interfaces => interfaces.Where(i => !ExcludedInterfaces.Contains(i.NetworkInterfaceType)),
+                _loggerFactory);
+        await _multicastService.Start(cancellationToken);
+        _serviceDiscovery = await ServiceDiscovery.CreateInstance(_multicastService, _loggerFactory, cancellationToken);
 
-        await StartAdvertising();
+        await StartAdvertising(port);
 
         _serviceDiscovery.ServiceInstanceDiscovered = OnServiceDiscovered;
         _serviceDiscovery.ServiceInstanceShutdown = OnServiceShutdown;
 
         await _serviceDiscovery.QueryServiceInstances(ServiceName);
     }
-    
+
     public ICollection<Peer> GetPeers()
     {
         return _peers.Values;
     }
 
-    private ServiceProfile GetServiceProfile(AdvertisePeer advertisePeer, uint instanceNumber = 0)
+    private ServiceProfile GetServiceProfile(ushort port, uint instanceNumber = 0)
     {
-        var instanceName = advertisePeer.InstanceName;
+        var instanceName = _userConfigService.GetFingerprint();
         if (instanceNumber > 0)
         {
             instanceName += "-" + instanceNumber;
         }
 
-        var serviceProfile = new ServiceProfile(instanceName, ServiceName, advertisePeer.Port);
-        serviceProfile.AddProperty("Friendly_User_Name", advertisePeer.FriendlyName);
+        var serviceProfile = new ServiceProfile(instanceName, ServiceName, port);
+        serviceProfile.AddProperty("name", _userConfigService.Username);
         return serviceProfile;
     }
 
-    private async Task StartAdvertising()
+    private async Task StartAdvertising(ushort port)
     {
         if (_serviceDiscovery == null)
         {
@@ -69,55 +79,61 @@ public class PeerService : IAsyncDisposable
         }
 
         uint currentCounter = 0;
-        while (await _serviceDiscovery.Probe(_serviceProfile))
+        do
         {
+            _serviceProfile = GetServiceProfile(port, currentCounter);
             currentCounter++;
-            _serviceProfile = GetServiceProfile(_advertisePeer, currentCounter);
-        }
+        } while (await _serviceDiscovery.Probe(_serviceProfile));
 
         _serviceDiscovery.Advertise(_serviceProfile);
-        _logger.LogDebug("Started advertising service {instanceName} for {port}", _serviceProfile.InstanceName,
-            _advertisePeer.Port);
+        _logger.LogDebug("Started advertising service {instanceName} for {port}", _serviceProfile.InstanceName, port);
     }
 
     private Task OnServiceDiscovered(ServiceInstanceDiscoveryEventArgs e)
     {
-        if (e.ServiceInstanceName == null
+        if (_serviceProfile == null
+            || e.ServiceInstanceName == null
             || e.ServiceInstanceName == _serviceProfile.FullyQualifiedName
-            || !e.ServiceInstanceName.BelongsTo($"{ServiceName}.local"))
+            || !e.ServiceInstanceName.BelongsTo($"{ServiceName}.local")
+            || _peers.ContainsKey(e.ServiceInstanceName.Labels[0]))
         {
             return Task.CompletedTask;
         }
 
-        string? friendlyName =
-            e.Message.AdditionalRecords.OfType<TXTRecord>().FirstOrDefault()?.Strings[1].Split('=', 2)[1];
         string serviceInstance = e.ServiceInstanceName.Labels[0];
-        _peers[serviceInstance] = new Peer(friendlyName, serviceInstance, e.RemoteEndPoint.Address.ToString(),
-            e.RemoteEndPoint.Port);
+        string? friendlyName = e.Message.AdditionalRecords.OfType<TXTRecord>().FirstOrDefault()
+            ?.Strings.FirstOrDefault(s => s.StartsWith("name="))?.Split('=', 2)[1];
+        
+        var serviceRecord = e.Message.AdditionalRecords.OfType<SRVRecord>().First();
+        var dnsRecord = e.Message.AdditionalRecords.OfType<ARecord>().FirstOrDefault(r => r.Name == serviceRecord.Target);
+        
+        var address = dnsRecord?.Address ?? e.RemoteEndPoint.Address;
+        _peers[serviceInstance] = new Peer(friendlyName, serviceInstance, address.ToString(),
+            serviceRecord.Port);
 
         _logger.LogDebug("Discovered service instance: {FriendlyName}/{InstanceName} at {Host}:{Port}",
             friendlyName,
             serviceInstance,
-            e.RemoteEndPoint.Address,
-            e.RemoteEndPoint.Port);
+            address,
+            serviceRecord.Port);
 
         return Task.CompletedTask;
     }
 
     private Task OnServiceShutdown(ServiceInstanceShutdownEventArgs e)
     {
-        if (e.ServiceInstanceName == null
+        if (_serviceProfile == null
+            || e.ServiceInstanceName == null
             || e.ServiceInstanceName == _serviceProfile.FullyQualifiedName
-            || !e.ServiceInstanceName.BelongsTo($"{ServiceName}.local"))
+            || !e.ServiceInstanceName.BelongsTo($"{ServiceName}.local")
+            || !_peers.ContainsKey(e.ServiceInstanceName.Labels[0]))
         {
             return Task.CompletedTask;
         }
-        
+
         string serviceInstance = e.ServiceInstanceName.Labels[0];
         _peers.TryRemove(serviceInstance, out _);
-        _logger.LogDebug("Service instance shutdown: {InstanceName} at {Host}:{Port}", serviceInstance,
-            e.RemoteEndPoint.Address,
-            e.RemoteEndPoint.Port);
+        _logger.LogDebug("Service instance shutdown: {InstanceName}", serviceInstance);
 
         return Task.CompletedTask;
     }
@@ -129,14 +145,25 @@ public class PeerService : IAsyncDisposable
             _serviceDiscovery.ServiceInstanceDiscovered = null;
             _serviceDiscovery.ServiceInstanceShutdown = null;
 
-            await _serviceDiscovery.Unadvertise(_serviceProfile);
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (_serviceProfile != null)
             {
-                _logger.LogDebug("Stopped advertising service {instanceName} for {port}", _serviceProfile.InstanceName,
-                    _advertisePeer.Port);
+                await _serviceDiscovery.Unadvertise(_serviceProfile);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("Stopped advertising service {instanceName}", _serviceProfile.InstanceName);
+                }
+
+                _serviceProfile = null;
             }
+
             _serviceDiscovery.Dispose();
             _serviceDiscovery = null;
+        }
+
+        if (_multicastService != null)
+        {
+            _multicastService.Dispose();
+            _multicastService = null;
         }
 
         GC.SuppressFinalize(this);
