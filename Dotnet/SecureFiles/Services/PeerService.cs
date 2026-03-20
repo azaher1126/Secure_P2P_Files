@@ -20,15 +20,15 @@ public class PeerService : IAsyncDisposable
 
     private readonly ILogger<PeerService> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly UserConfigService _userConfigService;
+    private readonly UserConfigProvider _userConfigProvider;
 
     private readonly ConcurrentDictionary<string, Peer> _peers = new();
 
-    public PeerService(UserConfigService userConfigService, ILoggerFactory loggerFactory)
+    public PeerService(UserConfigProvider userConfigProvider, ILoggerFactory loggerFactory)
     {
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<PeerService>();
-        _userConfigService = userConfigService;
+        _userConfigProvider = userConfigProvider;
     }
 
     public async Task StartAsync(ushort port, CancellationToken cancellationToken = default)
@@ -60,14 +60,14 @@ public class PeerService : IAsyncDisposable
 
     private ServiceProfile GetServiceProfile(ushort port, uint instanceNumber = 0)
     {
-        var instanceName = _userConfigService.GetFingerprint();
+        var instanceName = _userConfigProvider.GetFingerprint();
         if (instanceNumber > 0)
         {
             instanceName += "-" + instanceNumber;
         }
 
         var serviceProfile = new ServiceProfile(instanceName, ServiceName, port);
-        serviceProfile.AddProperty("name", _userConfigService.Username);
+        serviceProfile.AddProperty("name", _userConfigProvider.Username);
         return serviceProfile;
     }
 
@@ -111,11 +111,9 @@ public class PeerService : IAsyncDisposable
         _peers[serviceInstance] = new Peer(friendlyName, serviceInstance, address.ToString(),
             serviceRecord.Port);
 
-        _logger.LogDebug("Discovered service instance: {FriendlyName}/{InstanceName} at {Host}:{Port}",
+        _logger.LogDebug("Discovered service instance: {FriendlyName}/{InstanceName}",
             friendlyName,
-            serviceInstance,
-            address,
-            serviceRecord.Port);
+            serviceInstance);
 
         return Task.CompletedTask;
     }

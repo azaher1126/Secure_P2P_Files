@@ -10,31 +10,26 @@ public class SharedFileService
     private const string IndexFileName = "fileindex";
 
     private readonly LocalFileService _localFileService;
-    private readonly UserConfigService _userConfigService;
+    private readonly UserConfigProvider _userConfigProvider;
 
     private readonly List<SharedFile> _sharedFiles = [];
 
-    private string FilesDirectory => Path.Combine(_userConfigService.DataDirectory, FilesDirName);
-    private string IndexPath => Path.Combine(_userConfigService.DataDirectory, IndexFileName);
-
-    public SharedFileService(LocalFileService localFileService, UserConfigService userConfigService)
+    public SharedFileService(LocalFileService localFileService, UserConfigProvider userConfigProvider)
     {
         _localFileService = localFileService;
-        _userConfigService = userConfigService;
+        _userConfigProvider = userConfigProvider;
     }
 
     /// <summary>
-    /// Loads the file index from disk. Must be called after UserConfigService is initialized.
+    /// Loads the file index from disk. Must be called after UserConfigProvider is available.
     /// </summary>
     public async Task LoadIndex(CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(FilesDirectory);
-
-        if (!File.Exists(IndexPath))
+        if (!_localFileService.FileExists(IndexFileName))
             return;
 
-        var key = await _userConfigService.DeriveAesKey(cancellationToken);
-        var indexBytes = await _localFileService.ReadEncryptedBytes(IndexPath, key);
+        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+        var indexBytes = await _localFileService.ReadEncryptedBytes(IndexFileName, key);
 
         using var reader = new BinaryReader(new MemoryStream(indexBytes), Encoding.UTF8);
         var count = reader.ReadInt32();
@@ -62,16 +57,16 @@ public class SharedFileService
         // Sign: filename UTF-8 bytes || SHA-256 hash bytes (per spec Section 6.3.1)
         var signedData = Encoding.UTF8.GetBytes(fileName).Concat(hash).ToArray();
         using var rsa = RSA.Create();
-        rsa.ImportPkcs8PrivateKey(_userConfigService.PrivateKey, out _);
+        rsa.ImportPkcs8PrivateKey(_userConfigProvider.PrivateKey, out _);
         var signature = rsa.SignData(signedData, HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
 
-        var ownerFingerprint = _userConfigService.GetFingerprint();
+        var ownerFingerprint = _userConfigProvider.GetFingerprint();
         var sharedFile = new SharedFile(fileName, hash, ownerFingerprint, signature);
 
         // Encrypt and store the file
-        var key = await _userConfigService.DeriveAesKey(cancellationToken);
-        var encryptedPath = Path.Combine(FilesDirectory, fileName);
-        await _localFileService.WriteEncryptedBytes(encryptedPath, plaintext, key);
+        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+        var filePath = Path.Combine(FilesDirName, fileName);
+        await _localFileService.WriteEncryptedBytes(filePath, plaintext, key);
 
         _sharedFiles.Add(sharedFile);
         await SaveIndex(key, cancellationToken);
@@ -90,9 +85,9 @@ public class SharedFileService
         var entry = _sharedFiles.FirstOrDefault(f => f.Name == fileName)
             ?? throw new FileNotFoundException($"No shared file named '{fileName}'.");
 
-        var key = await _userConfigService.DeriveAesKey(cancellationToken);
-        var encryptedPath = Path.Combine(FilesDirectory, entry.Name);
-        return await _localFileService.ReadEncryptedBytes(encryptedPath, key);
+        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+        var filePath = Path.Combine(FilesDirName, entry.Name);
+        return await _localFileService.ReadEncryptedBytes(filePath, key);
     }
 
     /// <summary>
@@ -105,9 +100,9 @@ public class SharedFileService
 
         var sharedFile = new SharedFile(fileName, hash, ownerFingerprint, ownerSignature);
 
-        var key = await _userConfigService.DeriveAesKey(cancellationToken);
-        var encryptedPath = Path.Combine(FilesDirectory, fileName);
-        await _localFileService.WriteEncryptedBytes(encryptedPath, plaintext, key);
+        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+        var filePath = Path.Combine(FilesDirName, fileName);
+        await _localFileService.WriteEncryptedBytes(filePath, plaintext, key);
 
         // Replace if a file with the same name already exists
         _sharedFiles.RemoveAll(f => f.Name == fileName);
@@ -124,11 +119,10 @@ public class SharedFileService
         if (removed == 0)
             throw new FileNotFoundException($"No shared file named '{fileName}'.");
 
-        var encryptedPath = Path.Combine(FilesDirectory, fileName);
-        if (File.Exists(encryptedPath))
-            File.Delete(encryptedPath);
+        var filePath = Path.Combine(FilesDirName, fileName);
+        _localFileService.DeleteFile(filePath);
 
-        var key = await _userConfigService.DeriveAesKey(cancellationToken);
+        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
         await SaveIndex(key, cancellationToken);
     }
 
@@ -146,6 +140,6 @@ public class SharedFileService
             }
         }
 
-        await _localFileService.WriteEncryptedBytes(IndexPath, ms.ToArray(), key);
+        await _localFileService.WriteEncryptedBytes(IndexFileName, ms.ToArray(), key);
     }
 }

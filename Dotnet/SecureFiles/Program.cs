@@ -1,8 +1,11 @@
 using System.CommandLine;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using NReco.Logging.File;
 using SecureFiles.Services;
 using SecureFiles.BackgroundServices;
+using SecureFiles.Console;
 
 namespace SecureFiles;
 
@@ -15,17 +18,28 @@ internal static class Program
         {
             return await parsedArgs.InvokeAsync();
         }
+        
+        var localFileService = new LocalFileService(
+            parsedArgs.GetValue<string?>("--data-directory"));
+        
+        var loader = new UserConfigLoader(
+            localFileService,
+            parsedArgs.GetValue<string?>("--password"));
+
+        var userConfigProvider = await loader.LoadOrInitialize();
+        if (userConfigProvider is null)
+            return 1;
 
         HostApplicationBuilder builder = new(new HostApplicationBuilderSettings
         {
             ContentRootPath = AppContext.BaseDirectory
         });
 
-        builder.Services.AddSingleton<UserConfigService>(
-            x => new UserConfigService(x.GetRequiredService<LocalFileService>(),
-                parsedArgs.GetValue<string?>("--data-directory"),
-                parsedArgs.GetValue<string?>("--password")));
-        builder.Services.AddSingleton<LocalFileService>();
+        builder.Logging.ClearProviders();
+        builder.Logging.AddFile(localFileService.GetLogFilePath());
+
+        builder.Services.AddSingleton(localFileService);
+        builder.Services.AddSingleton(userConfigProvider);
         builder.Services.AddSingleton<SharedFileService>();
         builder.Services.AddSingleton<PeerService>();
 
@@ -33,12 +47,6 @@ internal static class Program
         builder.Services.AddHostedService<ServerService>();
 
         using var app = builder.Build();
-        
-        var userConfigService = app.Services.GetRequiredService<UserConfigService>();
-        if (!await userConfigService.LoadOrInitialize())
-        {
-            return 1;
-        }
 
         var sharedFileService = app.Services.GetRequiredService<SharedFileService>();
         await sharedFileService.LoadIndex();
