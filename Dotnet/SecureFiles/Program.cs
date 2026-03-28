@@ -6,6 +6,7 @@ using NReco.Logging.File;
 using SecureFiles.Services;
 using SecureFiles.BackgroundServices;
 using SecureFiles.Console;
+using SecureFiles.Console.Helpers;
 
 namespace SecureFiles;
 
@@ -42,6 +43,10 @@ internal static class Program
         builder.Services.AddSingleton(userConfigProvider);
         builder.Services.AddSingleton<SharedFileService>();
         builder.Services.AddSingleton<PeerService>();
+        builder.Services.AddSingleton<ConsentQueue>();
+
+        builder.Services.AddSingleton<MainWindow>();
+        builder.Services.AddSingleton<INavigator>(sp => sp.GetRequiredService<MainWindow>());
 
         builder.Services.AddHostedService<ConsoleService>();
         builder.Services.AddHostedService<ServerService>();
