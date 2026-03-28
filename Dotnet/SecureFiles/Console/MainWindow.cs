@@ -12,8 +12,6 @@ namespace SecureFiles.Console;
 public class MainWindow : Runnable, INavigator
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ConsentQueue _consentQueue;
-    private CancellationTokenSource? _consentCts;
     private View? _currentScreen;
     private readonly Label _footerLabel = new()
     {
@@ -24,10 +22,9 @@ public class MainWindow : Runnable, INavigator
 
     private readonly Stack<View> _navigationStack = new();
 
-    public MainWindow(IServiceProvider serviceProvider, UserConfigProvider userConfigProvider, ConsentQueue consentQueue)
+    public MainWindow(IServiceProvider serviceProvider, UserConfigProvider userConfigProvider)
     {
         _serviceProvider = serviceProvider;
-        _consentQueue = consentQueue;
         Title = $"Secure P2P Files — {userConfigProvider.Username} ({userConfigProvider.GetFingerprint()})";
         BorderStyle = LineStyle.Single;
 
@@ -44,32 +41,6 @@ public class MainWindow : Runnable, INavigator
     public void ShowInitialScreen()
     {
         Navigate<MainMenu>();
-        StartConsentLoop();
-    }
-
-    private void StartConsentLoop()
-    {
-        _consentCts = new CancellationTokenSource();
-        var token = _consentCts.Token;
-
-        _ = Task.Run(async () =>
-        {
-            await foreach (var request in _consentQueue.ReadAllAsync(token))
-            {
-                var tcs = new TaskCompletionSource<bool>();
-
-                App!.Invoke(() =>
-                {
-                    var dialog = new ConsentPromptDialog(request);
-                    App!.Run(dialog);
-                    tcs.SetResult(dialog.WasAccepted);
-                    dialog.Dispose();
-                });
-
-                var result = await tcs.Task;
-                request.Response.TrySetResult(result);
-            }
-        }, token);
     }
 
     public void Navigate<TScreen>() where TScreen : View
@@ -118,22 +89,4 @@ public class MainWindow : Runnable, INavigator
         }
     }
 
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing && _consentCts is not null)
-        {
-            try
-            {
-                _consentCts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Already disposed
-            }
-
-            _consentCts = null;
-        }
-
-        base.Dispose(disposing);
-    }
 }

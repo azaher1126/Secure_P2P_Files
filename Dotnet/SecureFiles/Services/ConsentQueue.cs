@@ -1,6 +1,7 @@
 using System.Threading.Channels;
+using SecureFiles.Models;
 
-namespace SecureFiles.Console;
+namespace SecureFiles.Services;
 
 public class ConsentQueue
 {

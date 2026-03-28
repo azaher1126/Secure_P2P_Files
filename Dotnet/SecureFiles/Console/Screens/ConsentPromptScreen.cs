@@ -1,3 +1,4 @@
+using SecureFiles.Models;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 

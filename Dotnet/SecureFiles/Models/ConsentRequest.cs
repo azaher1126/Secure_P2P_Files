@@ -1,4 +1,4 @@
-namespace SecureFiles.Console;
+namespace SecureFiles.Models;
 
 public enum ConsentRequestType
 {
