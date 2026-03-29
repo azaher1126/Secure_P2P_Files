@@ -23,9 +23,7 @@ internal static class Program
         var localFileService = new LocalFileService(
             parsedArgs.GetValue<string?>("--data-directory"));
         
-        var loader = new UserConfigLoader(
-            localFileService,
-            parsedArgs.GetValue<string?>("--password"));
+        var loader = new UserConfigLoader(localFileService);
 
         var userConfigProvider = await loader.LoadOrInitialize();
         if (userConfigProvider is null)
@@ -75,17 +73,12 @@ internal static class Program
 
     private static RootCommand CreateCliParser()
     {
-        Option<string> passwordOption = new("--password")
-        {
-            Description = "Password used to encrypt all local data. This include files and metadata."
-        };
         Option<string> dataDirectoryOption = new("--data-directory")
         {
             Description = "Directory where all local data is stored. This include files and metadata."
         };
         RootCommand rootCommand = new("Secure local Peer-to-Peer file sharing application")
         {
-            passwordOption,
             dataDirectoryOption
         };
 
