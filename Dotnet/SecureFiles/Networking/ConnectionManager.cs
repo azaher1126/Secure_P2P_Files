@@ -2,21 +2,25 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using SecureFiles.Models;
+using SecureFiles.Services;
 
 namespace SecureFiles.Networking;
 
 public class ConnectionManager : IDisposable
 {
     private readonly HandshakeService _handshakeService;
+    private readonly ContactStore _contactStore;
     private readonly ILogger<ConnectionManager> _logger;
 
     private readonly ConcurrentDictionary<string, Session> _activeSessions = new();
 
     public ConnectionManager(
         HandshakeService handshakeService,
+        ContactStore contactStore,
         ILogger<ConnectionManager> logger)
     {
         _handshakeService = handshakeService;
+        _contactStore = contactStore;
         _logger = logger;
     }
 
@@ -30,6 +34,7 @@ public class ConnectionManager : IDisposable
     {
         var session = await _handshakeService.AcceptHandshake(client, ct);
         StoreSession(session);
+        await _contactStore.SaveContactAsync(session.PeerFingerprint, session.PeerPublicKey.ExportSubjectPublicKeyInfo(), ct);
         _logger.LogInformation("Inbound session established with {Peer}", session.PeerFingerprint);
         return session;
     }
@@ -52,6 +57,7 @@ public class ConnectionManager : IDisposable
 
         var session = await _handshakeService.InitiateHandshake(client, ct);
         StoreSession(session);
+        await _contactStore.SaveContactAsync(session.PeerFingerprint, session.PeerPublicKey.ExportSubjectPublicKeyInfo(), ct);
         return session;
     }
 

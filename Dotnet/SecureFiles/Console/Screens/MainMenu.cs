@@ -11,6 +11,7 @@ public enum MainMenuChoice
     ListFiles,
     AddFile,
     ViewPeers,
+    ViewContacts,
     Quit
 }
 
@@ -56,6 +57,9 @@ public class MainMenu : View
                 case MainMenuChoice.ViewPeers:
                     navigator.Navigate<PeerListScreen>();
                     break;
+                case MainMenuChoice.ViewContacts:
+                    navigator.Navigate<ContactListScreen>();
+                    break;
                 case MainMenuChoice.Quit:
                     App?.RequestStop();
                     break;
@@ -74,6 +78,7 @@ public class MainMenu : View
         MainMenuChoice.ListFiles => "List shared files",
         MainMenuChoice.AddFile => "Add a file to share",
         MainMenuChoice.ViewPeers => "View discovered peers",
+        MainMenuChoice.ViewContacts => "View contacts",
         MainMenuChoice.Quit => "Quit",
         _ => choice.ToString()
     };

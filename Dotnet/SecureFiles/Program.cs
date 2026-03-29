@@ -42,12 +42,15 @@ internal static class Program
         builder.Services.AddSingleton(localFileService);
         builder.Services.AddSingleton(userConfigProvider);
         builder.Services.AddSingleton<SharedFileService>();
+        builder.Services.AddSingleton<ContactStore>();
         builder.Services.AddSingleton<PeerService>();
         builder.Services.AddSingleton<ConsentQueue>();
 
         builder.Services.AddSingleton<HandshakeService>();
         builder.Services.AddSingleton<MessageFramer>();
         builder.Services.AddSingleton<ConnectionManager>();
+        builder.Services.AddSingleton<ProtocolResponder>();
+        builder.Services.AddSingleton<ProtocolInitiator>();
 
         builder.Services.AddSingleton<MainWindow>();
         builder.Services.AddSingleton<INavigator>(sp => sp.GetRequiredService<MainWindow>());
@@ -60,6 +63,9 @@ internal static class Program
 
         var sharedFileService = app.Services.GetRequiredService<SharedFileService>();
         await sharedFileService.LoadIndex();
+
+        var contactStore = app.Services.GetRequiredService<ContactStore>();
+        await contactStore.LoadAsync();
 
         await app.RunAsync();
 

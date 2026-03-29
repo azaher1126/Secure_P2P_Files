@@ -13,6 +13,7 @@ public class SharedFileService
     private readonly UserConfigProvider _userConfigProvider;
 
     private readonly List<SharedFile> _sharedFiles = [];
+    private readonly SemaphoreSlim _indexLock = new(1, 1);
 
     public SharedFileService(LocalFileService localFileService, UserConfigProvider userConfigProvider)
     {
@@ -33,10 +34,14 @@ public class SharedFileService
 
         using var reader = new BinaryReader(new MemoryStream(indexBytes), Encoding.UTF8);
         var count = reader.ReadInt32();
+        await _indexLock.WaitAsync(cancellationToken);
+        _sharedFiles.Clear();
         for (var i = 0; i < count; i++)
         {
             _sharedFiles.Add(SharedFile.UnpackBinary(reader));
         }
+
+        _indexLock.Release();
     }
 
     /// <summary>
@@ -48,28 +53,36 @@ public class SharedFileService
     {
         var fileName = Path.GetFileName(sourcePath);
 
-        if (_sharedFiles.Any(f => f.Name == fileName))
-            throw new InvalidOperationException($"A file named '{fileName}' is already shared.");
+        await _indexLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_sharedFiles.Any(f => f.Name == fileName))
+                throw new InvalidOperationException($"A file named '{fileName}' is already shared.");
 
-        var plaintext = await File.ReadAllBytesAsync(sourcePath, cancellationToken);
-        var hash = SHA256.HashData(plaintext);
+            var plaintext = await File.ReadAllBytesAsync(sourcePath, cancellationToken);
+            var hash = SHA256.HashData(plaintext);
 
-        // Sign: filename UTF-8 bytes || SHA-256 hash bytes (per spec Section 6.3.1)
-        var signedData = Encoding.UTF8.GetBytes(fileName).Concat(hash).ToArray();
-        using var rsa = RSA.Create();
-        rsa.ImportPkcs8PrivateKey(_userConfigProvider.PrivateKey, out _);
-        var signature = rsa.SignData(signedData, HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
+            // Sign: filename UTF-8 bytes || SHA-256 hash bytes (per spec Section 6.3.1)
+            var signedData = Encoding.UTF8.GetBytes(fileName).Concat(hash).ToArray();
+            using var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(_userConfigProvider.PrivateKey, out _);
+            var signature = rsa.SignData(signedData, HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
 
-        var ownerFingerprint = _userConfigProvider.GetFingerprint();
-        var sharedFile = new SharedFile(fileName, hash, ownerFingerprint, signature);
+            var ownerFingerprint = _userConfigProvider.GetFingerprint();
+            var sharedFile = new SharedFile(fileName, hash, ownerFingerprint, signature);
 
-        // Encrypt and store the file
-        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
-        var filePath = Path.Combine(FilesDirName, fileName);
-        await _localFileService.WriteEncryptedBytes(filePath, plaintext, key);
+            // Encrypt and store the file
+            var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+            var filePath = Path.Combine(FilesDirName, fileName);
+            await _localFileService.WriteEncryptedBytes(filePath, plaintext, key);
 
-        _sharedFiles.Add(sharedFile);
-        await SaveIndex(key, cancellationToken);
+            _sharedFiles.Add(sharedFile);
+            await SaveIndex(key, cancellationToken);
+        }
+        finally
+        {
+            _indexLock.Release();
+        }
     }
 
     /// <summary>
@@ -83,7 +96,7 @@ public class SharedFileService
     public async Task<byte[]> GetFileForTransfer(string fileName, CancellationToken cancellationToken = default)
     {
         var entry = _sharedFiles.FirstOrDefault(f => f.Name == fileName)
-            ?? throw new FileNotFoundException($"No shared file named '{fileName}'.");
+                    ?? throw new FileNotFoundException($"No shared file named '{fileName}'.");
 
         var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
         var filePath = Path.Combine(FilesDirName, entry.Name);
@@ -105,9 +118,11 @@ public class SharedFileService
         await _localFileService.WriteEncryptedBytes(filePath, plaintext, key);
 
         // Replace if a file with the same name already exists
+        await _indexLock.WaitAsync(cancellationToken);
         _sharedFiles.RemoveAll(f => f.Name == fileName);
         _sharedFiles.Add(sharedFile);
         await SaveIndex(key, cancellationToken);
+        _indexLock.Release();
     }
 
     /// <summary>
@@ -115,15 +130,23 @@ public class SharedFileService
     /// </summary>
     public async Task RemoveFile(string fileName, CancellationToken cancellationToken = default)
     {
-        var removed = _sharedFiles.RemoveAll(f => f.Name == fileName);
-        if (removed == 0)
-            throw new FileNotFoundException($"No shared file named '{fileName}'.");
+        await _indexLock.WaitAsync(cancellationToken);
+        try
+        {
+            var removed = _sharedFiles.RemoveAll(f => f.Name == fileName);
+            if (removed == 0)
+                throw new FileNotFoundException($"No shared file named '{fileName}'.");
 
-        var filePath = Path.Combine(FilesDirName, fileName);
-        _localFileService.DeleteFile(filePath);
+            var filePath = Path.Combine(FilesDirName, fileName);
+            _localFileService.DeleteFile(filePath);
 
-        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
-        await SaveIndex(key, cancellationToken);
+            var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+            await SaveIndex(key, cancellationToken);
+        }
+        finally
+        {
+            _indexLock.Release();
+        }
     }
 
     private async Task SaveIndex(byte[] key, CancellationToken cancellationToken = default)

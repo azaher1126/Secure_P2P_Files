@@ -1,5 +1,5 @@
-using SecureFiles.Console.Helpers;
 using SecureFiles.Models;
+using SecureFiles.Networking;
 using SecureFiles.Services;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
@@ -7,21 +7,24 @@ using Terminal.Gui.Views;
 
 namespace SecureFiles.Console.Screens;
 
-public class FileListScreen : View
+public class SendFileScreen : View
 {
-    public FileListScreen(SharedFileService sharedFileService, INavigator navigator)
+    public SendFileScreen(
+        Session session,
+        SharedFileService sharedFileService,
+        ProtocolInitiator protocolInitiator)
     {
-        Title = "Shared Files";
+        Title = $"Send File to {session.PeerFingerprint}";
         BorderStyle = LineStyle.Single;
         CanFocus = true;
 
-        var files = sharedFileService.ListFiles().ToList();
+        var files = sharedFileService.ListFiles();
 
         if (files.Count == 0)
         {
             var emptyLabel = new Label
             {
-                Text = "No files are currently shared.",
+                Text = "No files available to send. Add files first.",
                 X = 1,
                 Y = 1
             };
@@ -31,7 +34,7 @@ public class FileListScreen : View
 
         var statusLabel = new Label
         {
-            Text = "Select a file to delete.",
+            Text = "Select a file to send.",
             X = 1,
             Y = 1
         };
@@ -44,7 +47,9 @@ public class FileListScreen : View
             Height = Dim.Fill()
         };
 
-        table.Table = new EnumerableTableSource<SharedFile>(files, new Dictionary<string, Func<SharedFile, object>>
+        var fileList = files.ToList();
+
+        table.Table = new EnumerableTableSource<SharedFile>(fileList, new Dictionary<string, Func<SharedFile, object>>
         {
             { "Name", f => f.Name },
             { "Owner", f => f.OwnerFingerprint },
@@ -55,26 +60,34 @@ public class FileListScreen : View
         {
             var app = App;
             if (app is null) return;
-            if (e.Row < 0 || e.Row >= files.Count) return;
+            if (e.Row < 0 || e.Row >= fileList.Count) return;
 
-            var file = files[e.Row];
+            var file = fileList[e.Row];
 
             var confirm = MessageBox.Query(
                 app,
-                "Delete File",
-                $"Delete '{file.Name}' from shared files?",
+                "Send File",
+                $"Send '{file.Name}' to this peer?",
                 "Yes", "No");
 
             if (confirm != 0) return;
 
+            statusLabel.Text = $"Sending '{file.Name}'...";
+            app.LayoutAndDraw();
+
             try
             {
-                sharedFileService.RemoveFile(file.Name).GetAwaiter().GetResult();
-                navigator.NavigateBack();
+                var result = protocolInitiator.SendFileAsync(session, file.Name, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                statusLabel.Text = result
+                    ? $"'{file.Name}' sent successfully."
+                    : $"Peer declined the upload of '{file.Name}'.";
             }
             catch (Exception ex)
             {
-                MessageBox.ErrorQuery(app, "Error", ex.Message, "OK");
+                MessageBox.ErrorQuery(app, "Transfer Error", ex.Message, "OK");
+                statusLabel.Text = "Send failed.";
             }
         };
 

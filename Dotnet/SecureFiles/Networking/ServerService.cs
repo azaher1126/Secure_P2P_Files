@@ -15,6 +15,7 @@ public class ServerService : BackgroundService
     private readonly PeerService _peerService;
     private readonly ConnectionManager _connectionManager;
     private readonly MessageFramer _messageFramer;
+    private readonly ProtocolResponder _protocolResponder;
 
     private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
 
@@ -22,17 +23,19 @@ public class ServerService : BackgroundService
         PeerService peerService,
         ConnectionManager connectionManager,
         MessageFramer messageFramer,
+        ProtocolResponder protocolResponder,
         ILogger<ServerService> logger)
     {
         _logger = logger;
         _peerService = peerService;
         _connectionManager = connectionManager;
         _messageFramer = messageFramer;
+        _protocolResponder = protocolResponder;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var listener = new TcpListener(IPAddress.Any, 0);
+        using var listener = new TcpListener(IPAddress.Any, 0);
         listener.Start();
 
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -99,7 +102,7 @@ public class ServerService : BackgroundService
                 var (type, payload) = await _messageFramer.ReceiveMessage(session, ct);
                 _logger.LogDebug("Received {Type} from {Peer}", type, session.PeerFingerprint);
 
-                // TODO: Dispatch to protocol handlers (GET_FILE_LIST, REQ_TO_RECEIVE, etc.)
+                await _protocolResponder.HandleMessageAsync(session, type, payload, ct);
             }
         }
         catch (OperationCanceledException) { }

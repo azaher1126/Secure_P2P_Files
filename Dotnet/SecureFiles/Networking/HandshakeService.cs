@@ -83,7 +83,7 @@ public class HandshakeService
     {
         using var rsa = RSA.Create();
         rsa.ImportSubjectPublicKeyInfo(_userConfig.PublicKey, out _);
-        rsa.ImportRSAPrivateKey(_userConfig.PrivateKey, out _);
+        rsa.ImportPkcs8PrivateKey(_userConfig.PrivateKey, out _);
 
         // Sign the 32-byte X25519 public value with RSA-PSS
         var signature = rsa.SignData(
