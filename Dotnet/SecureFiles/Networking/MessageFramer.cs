@@ -48,10 +48,9 @@ public class MessageFramer
 
         // Write AuthTag (16 bytes)
         await stream.WriteAsync(tag, ct);
-
-        await stream.FlushAsync(ct);
         
-        await stream.CopyToAsync(session.Stream, ct);
+        await session.Stream.WriteAsync(stream.ToArray(), ct);
+        await session.Stream.FlushAsync(ct);
 
         _logger.LogDebug("Sent message type {Type} ({Len} bytes payload)", type, payload.Length);
     }
