@@ -9,7 +9,7 @@ from queue import Queue
 from cryptography.hazmat.primitives import serialization
 from identity_manager import load_identity, save_identity, compute_fingerprint, rsa_pss_sign, rsa_pss_verify, generate_rsa_key_pair
 from handshake_engine import perform_handshake
-from message_framer import aesgcm_encrypt_message, aesgcm_decrypt_message
+from message_framer import aesgcm_encrypt_message, aesgcm_decrypt_message, recv_message
 from protocol_handler import (
     build_file_list_resp, parse_file_list_resp,
     build_rcv_or_send_request, parse_rcv_or_send_request,
@@ -32,13 +32,9 @@ Output: None (runs session loop until connection is closed)
 def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_queue):
     while True:
         try:
-            frame = sock.recv(4096)
-            if not frame:
+            msg_type, plaintext = recv_message(sock, session_key)
+            if msg_type is None:
                 break
-
-            # Get message type and payload in plaintext
-            msg_type, plaintext = aesgcm_decrypt_message(session_key, frame)
-        
         except Exception as e:
             print("[!] Receive loop error:", e)
             break

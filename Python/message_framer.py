@@ -38,6 +38,48 @@ def aesgcm_encrypt_message(session_key: bytes, msg_type: int, plaintext: bytes) 
 
 
 '''
+Reads exactly n bytes from a socket, blocking until all bytes are received.
+Input: socket, number of bytes to read
+Output: bytes
+'''
+def recv_exact(sock, n: int) -> bytes:
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise ConnectionError("Connection closed before all bytes received")
+        buf.extend(chunk)
+    return bytes(buf)
+
+
+'''
+Reads and decrypts one framed message from a socket.
+Reads the header to determine the full message length before reading the rest.
+Input: socket, session key (bytes)
+Output: message type (int), plaintext message (bytes)
+'''
+def recv_message(sock, session_key: bytes):
+    # Header: 1 byte type + 4 bytes payload length
+    header = recv_exact(sock, 5)
+    msg_type = header[0]
+    payload_len = struct.unpack(">I", header[1:5])[0]
+
+    # Read nonce (12 bytes) + ciphertext (payload_len bytes) + auth tag (16 bytes)
+    rest = recv_exact(sock, 12 + payload_len + 16)
+    nonce = rest[:12]
+    ciphertext = rest[12 : 12 + payload_len]
+    tag = rest[12 + payload_len :]
+
+    aesgcm = AESGCM(session_key)
+    try:
+        plaintext = aesgcm.decrypt(nonce, ciphertext + tag, None)
+        return msg_type, plaintext
+    except Exception as e:
+        print(f"AES-GCM decryption failed: {e}")
+        return None, None
+
+
+'''
 Decrypts an AES-GCM framed message using the HKDF session key derived in the handshake.
 Input: session key (bytes), framed message (bytes)
 Output: message type (enum), plaintext message (bytes)
