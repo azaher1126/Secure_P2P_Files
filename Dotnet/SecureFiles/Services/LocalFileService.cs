@@ -2,18 +2,12 @@ using System.Security.Cryptography;
 
 namespace SecureFiles.Services;
 
-public class LocalFileService : IDisposable
+public class LocalFileService
 {
-    private readonly Aes _aes = Aes.Create();
-
     public string DataDirectory { get; }
 
     public LocalFileService(string? dataDirectory = null)
     {
-        _aes.KeySize = 256;
-        _aes.Mode = CipherMode.CBC;
-        _aes.Padding = PaddingMode.PKCS7;
-
         DataDirectory = dataDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SecureFiles");
     }
@@ -44,10 +38,9 @@ public class LocalFileService : IDisposable
         if (fileBytes.Length < 16)
             throw new InvalidOperationException($"File '{relativePath}' is too small to contain a valid IV.");
 
-        _aes.Key = key;
-        _aes.IV = fileBytes[..16];
+        using var aes = CreateAes(key, fileBytes[..16]);
 
-        using var decryptor = _aes.CreateDecryptor();
+        using var decryptor = aes.CreateDecryptor();
         return decryptor.TransformFinalBlock(fileBytes, 16, fileBytes.Length - 16);
     }
 
@@ -60,15 +53,14 @@ public class LocalFileService : IDisposable
     {
         EnsureDirectoryExists(relativePath);
         var fullPath = ResolvePath(relativePath);
+        
+        using var aes = CreateAes(key);
 
-        _aes.Key = key;
-        _aes.GenerateIV();
-
-        using var encryptor = _aes.CreateEncryptor();
+        using var encryptor = aes.CreateEncryptor();
         var ciphertext = encryptor.TransformFinalBlock(bytes, 0, bytes.Length);
 
         await using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
-        await fs.WriteAsync(_aes.IV);
+        await fs.WriteAsync(aes.IV);
         await fs.WriteAsync(ciphertext);
     }
 
@@ -98,9 +90,24 @@ public class LocalFileService : IDisposable
             Directory.CreateDirectory(directory);
     }
 
-    public void Dispose()
+    private Aes CreateAes(byte[] key, byte[]? iv = null)
     {
-        _aes.Dispose();
-        GC.SuppressFinalize(this);
+        var aes = Aes.Create();
+        
+        aes.KeySize = 256;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+        aes.Key = key;
+        if (iv != null)
+        {
+            aes.IV = iv;
+        }
+        else
+        {
+            aes.GenerateIV();
+        }
+        
+        return aes;
     }
+    
 }

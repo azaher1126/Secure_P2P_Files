@@ -48,6 +48,7 @@ nunit-*.xml
 
 # Rider
 .idea/
+*.DotSettings.user
 
 ## Python section
 
