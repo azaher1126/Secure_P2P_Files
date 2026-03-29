@@ -11,11 +11,10 @@ Encrypts a file using AES-CBC with the master key derived from the user's passwo
 Input: user password, plaintext file path, ciphertext file path
 Output: None (saves encrypted file to disk)
 '''
-def encrypt_file(password: str, plaintext_path: str, ciphertext_path: str):
+def encrypt_file(password: str, plaintext: bytes, ciphertext_path: str):
     # Get the AES key
     key = derive_master_key(password)
-    # Read and encrypt plaintext file
-    plaintext = open(plaintext_path, "rb").read()
+    # Encrypt plaintext
     ciphertext = aes_cbc_encrypt(key, plaintext)
 
     # Write ciphertext to file
@@ -26,18 +25,17 @@ def encrypt_file(password: str, plaintext_path: str, ciphertext_path: str):
 '''
 Decrypts a file using AES-CBC with the master key derived from the user's password.
 Input: user password, ciphertext file path, plaintext file path
-Output: None (saves decrypted file to disk)
+Output: plaintext file contents (bytes)
 '''
-def decrypt_file(password: str, ciphertext_path: str, plaintext_path: str):
+def decrypt_file(password: str, ciphertext_path: str):
     # Get the AES key
     key = derive_master_key(password)
     # Read and decrypt ciphertext file
-    ciphertext = open(ciphertext_path, "rb").read()
+    with open(ciphertext_path, "rb") as f:
+        ciphertext = f.read()
     plaintext = aes_cbc_decrypt(key, ciphertext)
 
-    # Write plaintext to file
-    open(plaintext_path, "wb").write(plaintext)
-    return
+    return plaintext
 
 
 '''

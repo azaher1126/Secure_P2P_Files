@@ -7,7 +7,7 @@ import struct
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-from identity_manager import rsa_pss_sign, rsa_pss_verify, generate_rsa_key_pair
+from identity_manager import rsa_pss_sign, rsa_pss_verify, generate_rsa_key_pair, compute_fingerprint
 from cryptography.hazmat.primitives import hashes, serialization
 
 HANDSHAKE_PORT = 5000
@@ -96,6 +96,11 @@ def perform_handshake(sock, priv_rsa, pub_rsa, is_initiator=True):
     if not verified:
         print("Handshake verification failed")
         return None, None
+    
+    # Compute fingerprint for trusted_{peer}.pub
+    peer_filename = f"trusted_peer.pub"
+    with open(peer_filename, "wb") as f:
+        f.write(peer_rsa_pub.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo))
     
     # Compute shared session key using HKDF on X25519 shared secret
     peer_x25519_pub = x25519.X25519PublicKey.from_public_bytes(peer_x25519_pub_bytes)
