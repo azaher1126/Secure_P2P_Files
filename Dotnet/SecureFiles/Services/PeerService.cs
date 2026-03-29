@@ -8,7 +8,7 @@ namespace SecureFiles.Services;
 
 public class PeerService : IAsyncDisposable
 {
-    private const string ServiceName = "_secure_p2p_files._tcp";
+    private const string ServiceName = "_securep2pfiles._tcp";
 
     private static readonly IEnumerable<NetworkInterfaceType> ExcludedInterfaces =
         [NetworkInterfaceType.Loopback, NetworkInterfaceType.Tunnel];

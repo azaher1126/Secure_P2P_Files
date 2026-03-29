@@ -88,19 +88,27 @@ public class SharedFileService
     /// <summary>
     /// Returns the list of all shared files and their metadata.
     /// </summary>
-    public IReadOnlyList<SharedFile> ListFiles() => _sharedFiles.AsReadOnly();
+    public IReadOnlyList<SharedFile> ListFiles() => _sharedFiles.ToList();
 
     /// <summary>
     /// Decrypts and returns the plaintext bytes of a shared file for transfer to a peer.
     /// </summary>
     public async Task<byte[]> GetFileForTransfer(string fileName, CancellationToken cancellationToken = default)
     {
-        var entry = _sharedFiles.FirstOrDefault(f => f.Name == fileName)
-                    ?? throw new FileNotFoundException($"No shared file named '{fileName}'.");
+        await _indexLock.WaitAsync(cancellationToken);
+        try
+        {
+            var entry = _sharedFiles.FirstOrDefault(f => f.Name == fileName)
+                        ?? throw new FileNotFoundException($"No shared file named '{fileName}'.");
 
-        var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
-        var filePath = Path.Combine(FilesDirName, entry.Name);
-        return await _localFileService.ReadEncryptedBytes(filePath, key);
+            var key = await _userConfigProvider.DeriveAesKey(_localFileService, cancellationToken);
+            var filePath = Path.Combine(FilesDirName, entry.Name);
+            return await _localFileService.ReadEncryptedBytes(filePath, key);
+        }
+        finally
+        {
+            _indexLock.Release();
+        }
     }
 
     /// <summary>
@@ -119,10 +127,16 @@ public class SharedFileService
 
         // Replace if a file with the same name already exists
         await _indexLock.WaitAsync(cancellationToken);
-        _sharedFiles.RemoveAll(f => f.Name == fileName);
-        _sharedFiles.Add(sharedFile);
-        await SaveIndex(key, cancellationToken);
-        _indexLock.Release();
+        try
+        {
+            _sharedFiles.RemoveAll(f => f.Name == fileName);
+            _sharedFiles.Add(sharedFile);
+            await SaveIndex(key, cancellationToken);
+        }
+        finally
+        {
+            _indexLock.Release();
+        }
     }
 
     /// <summary>

@@ -49,16 +49,28 @@ public class ConnectionManager : IDisposable
             _logger.LogDebug("Reusing existing session with {Peer}", peer.InstanceName);
             return existing;
         }
-
+        
         var client = new TcpClient();
-        await client.ConnectAsync(peer.Address, peer.Port, ct);
+        
+        try
+        {
+            await client.ConnectAsync(peer.Address, peer.Port, ct);
 
-        _logger.LogDebug("Connected to peer {Name} at {Address}:{Port}", peer.FriendlyName, peer.Address, peer.Port);
+            _logger.LogDebug("Connected to peer {Name} at {Address}:{Port}", peer.FriendlyName, peer.Address,
+                peer.Port);
 
-        var session = await _handshakeService.InitiateHandshake(client, ct);
-        StoreSession(session);
-        await _contactStore.SaveContactAsync(session.PeerFingerprint, session.PeerPublicKey.ExportSubjectPublicKeyInfo(), ct);
-        return session;
+            var session = await _handshakeService.InitiateHandshake(client, ct);
+            StoreSession(session);
+            await _contactStore.SaveContactAsync(session.PeerFingerprint,
+                session.PeerPublicKey.ExportSubjectPublicKeyInfo(), ct);
+            return session;
+        } catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to connect to peer {Name} at {Address}:{Port}", peer.FriendlyName, peer.Address,
+                peer.Port);
+            client.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

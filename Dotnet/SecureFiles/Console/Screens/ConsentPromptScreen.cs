@@ -11,8 +11,8 @@ public class ConsentPromptDialog : Dialog
         Title = "Incoming Request";
 
         var action = request.Type == ConsentRequestType.ReceiveFile
-            ? "download"
-            : "send you";
+            ? "send you"
+            : "download";
 
         var message = new Label
         {
@@ -26,6 +26,8 @@ public class ConsentPromptDialog : Dialog
 
         AddButton(new Button { Text = "Decline" });
         AddButton(new Button { Text = "Accept" });
+
+        Width = Dim.Fill(8);
     }
 
     public bool WasAccepted => Result == 1;
