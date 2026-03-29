@@ -13,12 +13,10 @@ public class UserConfigLoader
     private const string PublicKeyFileName = "identity.pub";
 
     private readonly LocalFileService _localFileService;
-    private readonly string? _password;
 
-    public UserConfigLoader(LocalFileService localFileService, string? password = null)
+    public UserConfigLoader(LocalFileService localFileService)
     {
         _localFileService = localFileService;
-        _password = password;
     }
 
     /// <summary>
@@ -66,7 +64,7 @@ public class UserConfigLoader
     private async Task<UserConfigProvider?> LoadExisting()
     {
         AnsiConsole.WriteLine();
-        var password = _password ?? await PromptExistingPassword();
+        var password = await PromptExistingPassword();
 
         return await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
@@ -115,7 +113,7 @@ public class UserConfigLoader
         AnsiConsole.WriteLine();
 
         var username = await PromptUsername();
-        var password = _password ?? await PromptNewPassword();
+        var password = await PromptNewPassword();
 
         var provider = await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)

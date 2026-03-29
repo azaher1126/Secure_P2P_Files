@@ -32,7 +32,7 @@ public class MessageFramer
         using var aes = new AesGcm(session.SessionKey, TagSize);
         aes.Encrypt(nonce, payload, ciphertext, tag);
 
-        var stream = session.Stream;
+        using var stream = new MemoryStream();
 
         // Write MsgType (1 byte)
         stream.WriteByte((byte)type);
@@ -50,6 +50,8 @@ public class MessageFramer
         await stream.WriteAsync(tag, ct);
 
         await stream.FlushAsync(ct);
+        
+        await stream.CopyToAsync(session.Stream, ct);
 
         _logger.LogDebug("Sent message type {Type} ({Len} bytes payload)", type, payload.Length);
     }
