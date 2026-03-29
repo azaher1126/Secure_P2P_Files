@@ -51,6 +51,7 @@ internal static class Program
         builder.Services.AddSingleton<ConnectionManager>();
         builder.Services.AddSingleton<ProtocolResponder>();
         builder.Services.AddSingleton<ProtocolInitiator>();
+        builder.Services.AddSingleton<KeyMigrationService>();
 
         builder.Services.AddSingleton<MainWindow>();
         builder.Services.AddSingleton<INavigator>(sp => sp.GetRequiredService<MainWindow>());

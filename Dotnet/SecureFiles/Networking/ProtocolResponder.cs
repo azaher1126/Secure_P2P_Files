@@ -12,6 +12,8 @@ public class ProtocolResponder
     private readonly ContactStore _contactStore;
     private readonly ConsentQueue _consentQueue;
     private readonly MessageFramer _messageFramer;
+    private readonly KeyMigrationService _keyMigrationService;
+    private readonly ConnectionManager _connectionManager;
     private readonly ILogger<ProtocolResponder> _logger;
 
     public ProtocolResponder(
@@ -19,12 +21,16 @@ public class ProtocolResponder
         ContactStore contactStore,
         ConsentQueue consentQueue,
         MessageFramer messageFramer,
+        KeyMigrationService keyMigrationService,
+        ConnectionManager connectionManager,
         ILogger<ProtocolResponder> logger)
     {
         _sharedFileService = sharedFileService;
         _contactStore = contactStore;
         _consentQueue = consentQueue;
         _messageFramer = messageFramer;
+        _keyMigrationService = keyMigrationService;
+        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -40,6 +46,11 @@ public class ProtocolResponder
                 break;
             case MessageType.ReqToSend:
                 await HandleReqToSendAsync(session, payload, ct);
+                break;
+            case MessageType.KeyMigration:
+                var shouldTerminate = await _keyMigrationService.HandleKeyMigrationAsync(session, payload, ct);
+                if (shouldTerminate)
+                    _connectionManager.RemoveSession(session.PeerFingerprint);
                 break;
             default:
                 _logger.LogWarning("Unexpected inbound message type {Type} from {Peer}", type, session.PeerFingerprint);

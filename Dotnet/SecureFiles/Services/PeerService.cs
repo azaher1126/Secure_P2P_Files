@@ -8,7 +8,7 @@ namespace SecureFiles.Services;
 
 public class PeerService : IAsyncDisposable
 {
-    private const string ServiceName = "_secure_p2p_files._tcp";
+    private const string ServiceName = "_securep2pfiles._tcp";
 
     private static readonly IEnumerable<NetworkInterfaceType> ExcludedInterfaces =
         [NetworkInterfaceType.Loopback, NetworkInterfaceType.Tunnel];
@@ -134,6 +134,22 @@ public class PeerService : IAsyncDisposable
         _logger.LogDebug("Service instance shutdown: {InstanceName}", serviceInstance);
 
         return Task.CompletedTask;
+    }
+
+    public async Task ReAdvertiseAsync()
+    {
+        if (_serviceDiscovery == null || _serviceProfile == null)
+        {
+            _logger.LogWarning("Cannot re-advertise: service discovery not initialized");
+            return;
+        }
+
+        var port = _serviceProfile.Resources.OfType<SRVRecord>().First().Port;
+        await _serviceDiscovery.Unadvertise(_serviceProfile);
+        _logger.LogDebug("Unadvertised old profile {InstanceName}", _serviceProfile.InstanceName);
+
+        await StartAdvertising(port);
+        _logger.LogInformation("Re-advertised with new fingerprint {Fingerprint}", _userConfigProvider.GetFingerprint());
     }
 
     public async ValueTask DisposeAsync()

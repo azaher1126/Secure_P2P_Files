@@ -3,7 +3,8 @@ namespace SecureFiles.Models;
 public enum ConsentRequestType
 {
     ReceiveFile,
-    SendFile
+    SendFile,
+    KeyMigrationNotice
 }
 
 public class ConsentRequest

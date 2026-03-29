@@ -8,24 +8,43 @@ public class ConsentPromptDialog : Dialog
 {
     public ConsentPromptDialog(ConsentRequest request)
     {
-        Title = "Incoming Request";
+        Width = Dim.Fill(8);
 
-        var action = request.Type == ConsentRequestType.ReceiveFile
-            ? "download"
-            : "send you";
-
-        var message = new Label
+        if (request.Type == ConsentRequestType.KeyMigrationNotice)
         {
-            Text = $"Peer '{request.PeerName}' wants to {action} file '{request.FileName}'.",
-            X = 1,
-            Y = 1,
-            Width = Dim.Fill(1)
-        };
+            Title = "Key Migration";
 
-        Add(message);
+            var message = new Label
+            {
+                Text = $"Peer '{request.PeerName}' has migrated to a new key. The session has been closed.",
+                X = 1,
+                Y = 1,
+                Width = Dim.Fill(1)
+            };
 
-        AddButton(new Button { Text = "Decline" });
-        AddButton(new Button { Text = "Accept" });
+            Add(message);
+            AddButton(new Button { Text = "OK" });
+        }
+        else
+        {
+            Title = "Incoming Request";
+
+            var action = request.Type == ConsentRequestType.ReceiveFile
+                ? "send you"
+                : "download";
+
+            var message = new Label
+            {
+                Text = $"Peer '{request.PeerName}' wants to {action} file '{request.FileName}'.",
+                X = 1,
+                Y = 1,
+                Width = Dim.Fill(1)
+            };
+
+            Add(message);
+            AddButton(new Button { Text = "Decline" });
+            AddButton(new Button { Text = "Accept" });
+        }
     }
 
     public bool WasAccepted => Result == 1;

@@ -22,9 +22,12 @@ public class MainWindow : Runnable, INavigator
 
     private readonly Stack<View> _navigationStack = new();
 
+    private readonly UserConfigProvider _userConfigProvider;
+
     public MainWindow(IServiceProvider serviceProvider, UserConfigProvider userConfigProvider)
     {
         _serviceProvider = serviceProvider;
+        _userConfigProvider = userConfigProvider;
         Title = $"Secure P2P Files — {userConfigProvider.Username} ({userConfigProvider.GetFingerprint()})";
         BorderStyle = LineStyle.Single;
 
@@ -36,6 +39,11 @@ public class MainWindow : Runnable, INavigator
                 e.Handled = true;
             }
         };
+    }
+
+    public void RefreshTitle()
+    {
+        Title = $"Secure P2P Files — {_userConfigProvider.Username} ({_userConfigProvider.GetFingerprint()})";
     }
 
     public void ShowInitialScreen()

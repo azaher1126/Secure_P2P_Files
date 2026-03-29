@@ -31,38 +31,51 @@ public class ContactStore
         using var reader = new BinaryReader(new MemoryStream(data), Encoding.UTF8);
         var count = reader.ReadInt32();
         await _contactsLock.WaitAsync(cancellationToken);
-        _contacts.Clear();
-        for (var i = 0; i < count; i++)
+        try
         {
-            var fingerprint = reader.ReadString();
-            var publicKeyDer = reader.ReadLengthPrefixedBytes();
-            var fileCount = reader.ReadInt32();
-            var files = new List<SharedFile>(fileCount);
-            for (var j = 0; j < fileCount; j++)
+            _contacts.Clear();
+            for (var i = 0; i < count; i++)
             {
-                files.Add(SharedFile.UnpackBinary(reader));
+                var fingerprint = reader.ReadString();
+                var publicKeyDer = reader.ReadLengthPrefixedBytes();
+                var fileCount = reader.ReadInt32();
+                var files = new List<SharedFile>(fileCount);
+                for (var j = 0; j < fileCount; j++)
+                {
+                    files.Add(SharedFile.UnpackBinary(reader));
+                }
+
+                _contacts.Add(new Contact(fingerprint, publicKeyDer, files));
             }
-            _contacts.Add(new Contact(fingerprint, publicKeyDer, files));
         }
-        _contactsLock.Release();
+        finally
+        {
+            _contactsLock.Release();
+        }
     }
 
     public async Task SaveContactAsync(string fingerprint, byte[] publicKeyDer, CancellationToken cancellationToken = default)
     {
         await _contactsLock.WaitAsync(cancellationToken);
-        var existing = _contacts.FindIndex(c => c.Fingerprint == fingerprint);
-        if (existing >= 0)
+        try
         {
-            // Update public key, preserve cached files
-            _contacts[existing] = _contacts[existing] with { PublicKeyDer = publicKeyDer };
-        }
-        else
-        {
-            _contacts.Add(new Contact(fingerprint, publicKeyDer, []));
-        }
+            var existing = _contacts.FindIndex(c => c.Fingerprint == fingerprint);
+            if (existing >= 0)
+            {
+                // Update public key, preserve cached files
+                _contacts[existing] = _contacts[existing] with { PublicKeyDer = publicKeyDer };
+            }
+            else
+            {
+                _contacts.Add(new Contact(fingerprint, publicKeyDer, []));
+            }
 
-        await SaveAsync(cancellationToken);
-        _contactsLock.Release();
+            await SaveAsync(cancellationToken);
+        }
+        finally
+        {
+            _contactsLock.Release();
+        }
     }
 
     public Contact? GetContact(string fingerprint) =>
@@ -74,24 +87,30 @@ public class ContactStore
     public async Task CacheFileListAsync(string fingerprint, IReadOnlyList<SharedFile> files, CancellationToken cancellationToken = default)
     {
         await _contactsLock.WaitAsync(cancellationToken);
-        var existing = _contacts.FindIndex(c => c.Fingerprint == fingerprint);
-        if (existing >= 0)
+        try
         {
-            _contacts[existing] = _contacts[existing] with { CachedFiles = files.ToList() };
-        }
-        else
-        {
-            _contacts.Add(new Contact(fingerprint, [], files.ToList()));
-        }
+            var existing = _contacts.FindIndex(c => c.Fingerprint == fingerprint);
+            if (existing >= 0)
+            {
+                _contacts[existing] = _contacts[existing] with { CachedFiles = files.ToList() };
+            }
+            else
+            {
+                _contacts.Add(new Contact(fingerprint, [], files.ToList()));
+            }
 
-        await SaveAsync(cancellationToken);
-        _contactsLock.Release();
+            await SaveAsync(cancellationToken);
+        }
+        finally
+        {
+            _contactsLock.Release();
+        }
     }
 
     public IReadOnlyList<SharedFile>? GetCachedFileList(string fingerprint) =>
         GetContact(fingerprint)?.CachedFiles;
 
-    public IReadOnlyList<Contact> ListContacts() => _contacts.AsReadOnly();
+    public IReadOnlyList<Contact> ListContacts() => _contacts.ToList();
 
     private async Task SaveAsync(CancellationToken cancellationToken = default)
     {
