@@ -136,6 +136,22 @@ public class PeerService : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public async Task ReAdvertiseAsync()
+    {
+        if (_serviceDiscovery == null || _serviceProfile == null)
+        {
+            _logger.LogWarning("Cannot re-advertise: service discovery not initialized");
+            return;
+        }
+
+        var port = _serviceProfile.Resources.OfType<SRVRecord>().First().Port;
+        await _serviceDiscovery.Unadvertise(_serviceProfile);
+        _logger.LogDebug("Unadvertised old profile {InstanceName}", _serviceProfile.InstanceName);
+
+        await StartAdvertising(port);
+        _logger.LogInformation("Re-advertised with new fingerprint {Fingerprint}", _userConfigProvider.GetFingerprint());
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_serviceDiscovery != null)

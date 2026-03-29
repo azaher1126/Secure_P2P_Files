@@ -9,4 +9,6 @@ public interface INavigator
     void Navigate(View screen);
 
     void NavigateBack();
+
+    void RefreshTitle();
 }

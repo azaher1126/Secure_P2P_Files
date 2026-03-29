@@ -7,8 +7,10 @@ namespace SecureFiles.Services;
 public class UserConfigProvider
 {
     private const string SaltFileName = "local.salt";
+    private const string PrivateKeyFileName = "identity.key";
+    private const string PublicKeyFileName = "identity.pub";
 
-    private readonly UserConfig _userConfig;
+    private UserConfig _userConfig;
     private readonly string _password;
 
     public string Username => _userConfig.Username;
@@ -19,6 +21,18 @@ public class UserConfigProvider
     {
         _userConfig = userConfig;
         _password = password;
+    }
+
+    public void ReplaceKeys(byte[] newPublicKey, byte[] newPrivateKey)
+    {
+        _userConfig = _userConfig with { PublicKey = newPublicKey, PrivateKey = newPrivateKey };
+    }
+
+    public async Task SaveNewKeysAsync(LocalFileService localFileService, CancellationToken cancellationToken = default)
+    {
+        var key = await DeriveAesKey(localFileService, cancellationToken);
+        await localFileService.WriteRawBytes(PublicKeyFileName, PublicKey, cancellationToken);
+        await localFileService.WriteEncryptedBytes(PrivateKeyFileName, PrivateKey, key);
     }
 
     public string GetFingerprint()

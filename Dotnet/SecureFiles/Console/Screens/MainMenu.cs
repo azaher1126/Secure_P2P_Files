@@ -1,4 +1,5 @@
 using SecureFiles.Console.Helpers;
+using SecureFiles.Services;
 using Terminal.Gui.App;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
@@ -12,12 +13,13 @@ public enum MainMenuChoice
     AddFile,
     ViewPeers,
     ViewContacts,
+    MigrateKey,
     Quit
 }
 
 public class MainMenu : View
 {
-    public MainMenu(INavigator navigator)
+    public MainMenu(INavigator navigator, KeyMigrationService keyMigrationService)
     {
         Title = "Main Menu";
         BorderStyle = LineStyle.Single;
@@ -60,6 +62,30 @@ public class MainMenu : View
                 case MainMenuChoice.ViewContacts:
                     navigator.Navigate<ContactListScreen>();
                     break;
+                case MainMenuChoice.MigrateKey:
+                {
+                    var app = App;
+                    if (app is null) break;
+
+                    var confirm = MessageBox.Query(app, "Key Migration",
+                        "This will generate a new RSA key pair and notify all connected contacts. Continue?",
+                        "Yes", "No");
+
+                    if (confirm != 0) break;
+
+                    try
+                    {
+                        keyMigrationService.MigrateKeyAsync(CancellationToken.None).GetAwaiter().GetResult();
+                        navigator.RefreshTitle();
+                        MessageBox.Query(app, "Success", "Key migration complete. All sessions have been closed.", "OK");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.ErrorQuery(app, "Error", ex.Message, "OK");
+                    }
+
+                    break;
+                }
                 case MainMenuChoice.Quit:
                     App?.RequestStop();
                     break;
@@ -79,6 +105,7 @@ public class MainMenu : View
         MainMenuChoice.AddFile => "Add a file to share",
         MainMenuChoice.ViewPeers => "View discovered peers",
         MainMenuChoice.ViewContacts => "View contacts",
+        MainMenuChoice.MigrateKey => "Migrate key (compromised key)",
         MainMenuChoice.Quit => "Quit",
         _ => choice.ToString()
     };
