@@ -314,11 +314,11 @@ def handle_peer_connection(conn, addr, priv_rsa, pub_rsa, password):
 '''
 Handles outbound connection to peer.
 '''
-def connect_to_peer(ip, priv_rsa, pub_rsa, password):
+def connect_to_peer(ip, port, priv_rsa, pub_rsa, password):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # Try to establish connection
     try:
-        s.connect((ip, 5002))
+        s.connect((ip, port))
     except Exception as e:
         print("[!] Connection failed:", e)
         return
@@ -395,11 +395,11 @@ if __name__ == "__main__":
 
         elif cmd.startswith("connect"):
             parts = cmd.split()
-            if len(parts) != 2:
-                print("Usage: connect <peer-ip>")
+            if len(parts) != 3:
+                print("Usage: connect <peer-ip> <peer-port>")
                 continue
             # Connect to peer
-            connect_to_peer(parts[1], priv_rsa, pub_rsa, password)
+            connect_to_peer(parts[1], int(parts[2]), priv_rsa, pub_rsa, password)
 
         elif cmd == "exit":
             print("Bye!")
