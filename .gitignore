@@ -115,5 +115,9 @@ ENV/
 env.bak/
 venv.bak/
 
+shared_files/
+data/
+trusted_peer.pub
+
 # macOS
 .DS_Store

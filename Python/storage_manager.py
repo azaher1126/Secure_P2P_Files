@@ -8,7 +8,7 @@ from identity_manager import derive_master_key, aes_cbc_encrypt, aes_cbc_decrypt
 
 '''
 Encrypts a file using AES-CBC with the master key derived from the user's password.
-Input: user password, plaintext file path, ciphertext file path
+Input: user password, plaintext file bytes, ciphertext file path
 Output: None (saves encrypted file to disk)
 '''
 def encrypt_file(password: str, plaintext: bytes, ciphertext_path: str):
@@ -18,8 +18,30 @@ def encrypt_file(password: str, plaintext: bytes, ciphertext_path: str):
     ciphertext = aes_cbc_encrypt(key, plaintext)
 
     # Write ciphertext to file
-    open(ciphertext_path, "wb").write(ciphertext)
+    with open(ciphertext_path, "wb") as f:
+        f.write(ciphertext)
     return
+
+
+
+'''
+Encrypts plaintext files on bootup. Original plaintext files should be deleted by caller after this function returns.
+Input: user password, plaintext file path, ciphertext file path
+Output: None (saves encrypted file to disk)
+'''
+def encrypt_plaintext_file_on_bootup(password: str, plaintext_path: str, ciphertext_path: str):
+    # Get AES key
+    key = derive_master_key(password)
+    # Read plaintext file
+    with open(plaintext_path, "rb") as f:
+        plaintext = f.read()
+        # Encrypt plaintext
+        ciphertext = aes_cbc_encrypt(key, plaintext)
+        # Write ciphertext to file
+        with open(ciphertext_path, "wb") as f:
+            f.write(ciphertext)
+    return
+    
 
 
 '''
