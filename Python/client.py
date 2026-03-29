@@ -318,7 +318,7 @@ def connect_to_peer(ip, priv_rsa, pub_rsa, password):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # Try to establish connection
     try:
-        s.connect((ip, 5002))
+        s.connect((ip, 5000))
     except Exception as e:
         print("[!] Connection failed:", e)
         return
