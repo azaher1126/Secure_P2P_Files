@@ -5,6 +5,7 @@ CLI P2P client implementation for all message types
 import os
 import socket
 import threading
+import hashlib
 from queue import Queue
 from cryptography.hazmat.primitives import serialization
 from identity_manager import load_identity, save_identity, compute_fingerprint, rsa_pss_sign, rsa_pss_verify, generate_rsa_key_pair
@@ -50,12 +51,40 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
                 if not os.path.isfile(filepath):
                     continue
 
-                # This is a file, get the metadata
-                h = hash_file_bytes(filepath)
+                # Handle encrypted files (_enc suffix) - derive original name and plaintext hash
+                if filename.endswith("_enc") or "_enc." in filename:
+                    # Derive original filename (e.g., "doc_enc.txt" -> "doc.txt")
+                    # The bootup encryption inserts "_enc" before the extension
+                    # e.g., "document.txt" -> "document_enc.txt"
+                    if "_enc." in filename:
+                        parts = filename.rsplit("_enc.", 1)
+                        original_name = parts[0] + "." + parts[1]
+                    else:
+                        # File ends with "_enc" but no extension
+                        original_name = filename[:-4]  # Remove "_enc" suffix
+                    
+                    # Decrypt file to get plaintext for hashing/signing
+                    try:
+                        file_plaintext = decrypt_file(password, filepath)
+                    except Exception as e:
+                        ui_queue.put(f"[!] Failed to decrypt {filename}: {e}")
+                        continue
+                    
+                    # Hash the PLAINTEXT (not ciphertext) per protocol spec
+                    h = hashlib.sha256(file_plaintext).digest()
+                    
+                    # Use original filename in the list
+                    display_name = original_name
+                else:
+                    # Plaintext file (shouldn't normally happen after bootup)
+                    h = hash_file_bytes(filepath)
+                    display_name = filename
+                
                 fingerprint = compute_fingerprint(pub_rsa)
-                sig = rsa_pss_sign(priv_rsa, filename.encode("utf-8") + h)
+                # Sign over (filename + hash)
+                sig = rsa_pss_sign(priv_rsa, display_name.encode("utf-8") + h)
                 files.append({
-                    "name": filename,
+                    "name": display_name,
                     "hash": h,
                     "fingerprint": fingerprint,
                     "signature": sig,
@@ -85,12 +114,42 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
             except:
                 ui_queue.put("[!] No response, denying request")
                 consent = False
-            if consent:
-                filepath = os.path.join(DATA_PATH, filename)
-                if not os.path.isfile(filepath): # file not found, send deny consent response
+            
+            # Determine status and check file existence
+            # Try the filename as-is first (for plaintext files)
+            filepath = os.path.join(DATA_PATH, filename)
+            file_exists = os.path.isfile(filepath)
+            
+            # If not found, try looking for encrypted version (filename_enc.ext)
+            if not file_exists and "." in filename:
+                # Insert "_enc" before the extension
+                parts = filename.rsplit(".", 1)
+                enc_filename = parts[0] + "_enc." + parts[1]
+                enc_filepath = os.path.join(DATA_PATH, enc_filename)
+                if os.path.isfile(enc_filepath):
+                    filepath = enc_filepath
+                    file_exists = True
+            elif not file_exists and filename.endswith("_enc") is False:
+                # Try appending "_enc" suffix
+                enc_filepath = os.path.join(DATA_PATH, filename + "_enc")
+                if os.path.isfile(enc_filepath):
+                    filepath = enc_filepath
+                    file_exists = True
+            
+            if consent and file_exists:
+                status = 0x01  # accept
+            else:
+                status = 0x02  # deny
+                if consent and not file_exists:
                     ui_queue.put("[!] Requested file not found")
-                    continue
-
+            
+            # Send CONSENT_RESPONSE first
+            consent_resp = build_consent_resp(status, filename)
+            frame_out = aesgcm_encrypt_message(session_key, 0x07, consent_resp)
+            sock.sendall(frame_out)
+            
+            # Only send file if accepted
+            if status == 0x01:  # accept
                 ui_queue.put("[RESP] Sending file...")
                 # Send the file
                 file_plaintext = decrypt_file(password, filepath)
@@ -167,7 +226,7 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
             file_data = parse_data_transfer(plaintext)
             filename = file_data["filename"]
             file_contents = file_data["file_contents"]
-            ui_queue.put("[INFO] Received file transfer for file", filename)
+            ui_queue.put(f"[INFO] Received file transfer for file {filename}")
 
             # Encrypt file contents and store
             filepath = os.path.join(DATA_PATH, filename)
