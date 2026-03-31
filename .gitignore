@@ -118,6 +118,7 @@ venv.bak/
 shared_files/
 data/
 trusted_peer.pub
+peer_files.txt
 
 # macOS
 .DS_Store

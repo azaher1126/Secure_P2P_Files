@@ -102,6 +102,13 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
             files = parse_file_list_resp(plaintext)
             for f in files:
                 ui_queue.put(f"  - {f['name']} (hash: {f['hash'].hex()}, owner: {f['fingerprint']}, signature: {f['signature'].hex()})")
+            # Save list of files and hashes for reference during data transfer
+            # store in form [filename],[filehash]
+            with open("peer_files.txt", "wb") as peer_files:
+                for f in files:
+                    fname = f['name'].encode('utf-8')
+                    fhash = f['hash']
+                    peer_files.write(fname + ",".encode("utf-8") + fhash + "\n".encode("utf-8"))
 
         # REQ_TO_RECEIVE
         elif msg_type == 0x04:
@@ -220,6 +227,19 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
                     frame_out = aesgcm_encrypt_message(session_key, 0x08, data_transfer)
                     sock.sendall(frame_out)
                     ui_queue.put("[RESP] File sent successfully")
+                elif not "_enc" in filename:
+                    # Try version with _enc at end of filename
+                    fname_parts = filename.split(".")
+                    filepath = os.path.join(DATA_PATH, fname_parts[0] + "_enc." + fname_parts[1])
+                    if os.path.isfile(filepath):
+                        # Send the file
+                        file_plaintext = decrypt_file(password, filepath)
+                        data_transfer = build_data_transfer(filename, file_plaintext)
+                        frame_out = aesgcm_encrypt_message(session_key, 0x08, data_transfer)
+                        sock.sendall(frame_out)
+                        ui_queue.put("[RESP] File sent successfully")
+                    else:
+                        print("no filepath", filepath)
 
         # DATA_TRANSFER
         elif msg_type == 0x08:
@@ -228,9 +248,36 @@ def recv_loop(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, input_qu
             file_contents = file_data["file_contents"]
             ui_queue.put(f"[INFO] Received file transfer for file {filename}")
 
-            # Encrypt file contents and store
-            filepath = os.path.join(DATA_PATH, filename)
-            encrypt_file(password, file_contents, filepath)
+            # Verify the hash
+            filehash = hashlib.sha256(file_contents).digest()
+            fname_len = len(filename)
+            verified = False
+            with open("peer_files.txt", "rb") as f:
+                for line in f:
+                    fileinfo = line.strip()
+                    if (fileinfo[:fname_len]).decode("utf-8") == filename:
+                        print("saved hash:", fileinfo[fname_len + 1 :].hex())
+                        print("received hash:", filehash.hex())
+                        # check if the hash matches
+                        if fileinfo[fname_len + 1 :] == filehash:
+                            verified = True
+                            break
+                        # else verified remains False
+                        break
+
+            # Encrypt file contents and store only if file hash was verified
+            if verified:
+                ui_queue.put(f"Hash verified for file {filename}, storing now")
+                # Store new encrypted files with _enc in the name
+                if not "_enc" in filename:
+                    fname_parts = filename.split(".")
+                    fname_enc = fname_parts[0] + "_enc." + fname_parts[1]
+                else:
+                    fname_enc = filename
+                filepath = os.path.join(DATA_PATH, fname_enc)
+                encrypt_file(password, file_contents, filepath)
+            else:
+                ui_queue.put(f"Hash verification failed for file {filename}, not storing")
     
     print("[*] Receive loop closed")
 
@@ -292,15 +339,19 @@ def interactive_cli(sock, session_key, priv_rsa, pub_rsa, password, ui_queue, in
                 print("Usage: send <filename>")
                 continue
 
-            filename = parts[1]
-            filepath = os.path.join(DATA_PATH, filename)
+            if "_enc" in parts[1]:
+                fname_parts = parts[1].split(".")
+                filename = (fname_parts[0])[:-4] + "." + fname_parts[1]
+            else:
+                filename = parts[1]
+            filepath = os.path.join(DATA_PATH, parts[1])
             if os.path.isfile(filepath):
-                send_req = build_rcv_or_send_request(parts[1])
+                send_req = build_rcv_or_send_request(filename)
                 frame_out = aesgcm_encrypt_message(session_key, 0x05, send_req)
                 sock.sendall(frame_out)
                 print(f"[RESP] Requested to send file {parts[1]} to peer")
             else:
-                print(f"[ERR] No file {filename} in shared_files/")
+                print(f"[ERR] No file {parts[1]} in shared_files/")
 
         elif op == "migrate":
             print("[*] Starting key migration procedure...")
@@ -425,12 +476,13 @@ if __name__ == "__main__":
     for filename in os.listdir(DATA_PATH):
         filepath = os.path.join(DATA_PATH, filename)
         print(filepath)
-        filename_parts = filename.split(".")
-        enc_fname = filename_parts[0] + "_enc." + filename_parts[1]
-        enc_fpath = os.path.join(DATA_PATH, enc_fname)
-        print(enc_fpath)
-        encrypt_plaintext_file_on_bootup(password, filepath, enc_fpath)
-        os.remove(filepath)
+        if not "_enc" in filepath:
+            filename_parts = filename.split(".")
+            enc_fname = filename_parts[0] + "_enc." + filename_parts[1]
+            enc_fpath = os.path.join(DATA_PATH, enc_fname)
+            print(enc_fpath)
+            encrypt_plaintext_file_on_bootup(password, filepath, enc_fpath)
+            os.remove(filepath)
         print(os.listdir(DATA_PATH))
 
     # Discover peers
