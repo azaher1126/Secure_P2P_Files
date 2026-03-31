@@ -121,3 +121,6 @@ trusted_peer.pub
 
 # macOS
 .DS_Store
+
+# vs code
+.history
