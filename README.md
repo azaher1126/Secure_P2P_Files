@@ -6,6 +6,7 @@ To run Python tests, ```cd``` into the ```Python``` directory and run ```python3
 
 # Running the project
 To run the Python client, ```cd``` into the ```Python``` directory containing the Python files, and run ```python3 client.py```.
+For the C# client, you will need to have the .NET SDK installed. Then, in your terminal, run ```cd Dotnet```, ```dotnet build```, and ```dotnet run```.
 
 # Notes
 The project is imperfect, so please note that running end-to-end with two clients may require pressing ```Enter``` a few times to get output to appear in the console.
