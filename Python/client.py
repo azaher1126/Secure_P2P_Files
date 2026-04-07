@@ -486,7 +486,7 @@ if __name__ == "__main__":
         print(os.listdir(DATA_PATH))
 
     # Discover peers
-    disc = Discovery(fingerprint)
+    disc = Discovery(fingerprint, port=5000)
     disc.start()
     # Advertise & listen for peer connections in background
     threading.Thread(target=disc.browse, daemon=True).start()
